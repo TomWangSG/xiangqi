@@ -1,0 +1,887 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>中国象棋 Xiangqi</title>
+<meta name="description" content="Play Chinese Chess (Xiangqi) in your browser against the computer or a friend.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@700;900&display=swap">
+<style>
+/* Layout: wooden board as the hero on the left, a quiet jade-toned control column on the right; stacks on phones. */
+:root {
+  --bg: #E8ECE9;
+  --surface: #F6F8F6;
+  --fg: #1B2320;
+  --muted: #5B6862;
+  --line: #CDD6D1;
+  --accent: #2E6A58;
+  --accent-soft: rgba(46,106,88,.12);
+  --red: #B3261E;
+  --ink: #1D1D1D;
+  --ink-ring: transparent;
+  --font-display: "Ma Shan Zheng", "STXingkai", "KaiTi", serif;
+  --font-piece: "Noto Serif SC", "STKaiti", "KaiTi", serif;
+  --font-ui: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F1412; --surface: #161D1A; --fg: #E2E8E4; --muted: #94A29B; --line: #27322D;
+    --accent: #79BCA3; --accent-soft: rgba(121,188,163,.14); --red: #E2594E; --ink: #0B0B0B; --ink-ring: #8A958F;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F1412; --surface: #161D1A; --fg: #E2E8E4; --muted: #94A29B; --line: #27322D;
+  --accent: #79BCA3; --accent-soft: rgba(121,188,163,.14); --red: #E2594E; --ink: #0B0B0B; --ink-ring: #8A958F;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 14px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 32px;
+}
+.wrap { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+h1 { font-family: var(--font-display); font-weight: 400; font-size: 44px; line-height: 1; margin: 0; letter-spacing: .04em; }
+.sub { color: var(--muted); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+.app { display: grid; grid-template-columns: minmax(0, 600px) minmax(0, 330px); gap: 28px; justify-content: center; align-items: start; }
+@media (max-width: 880px) { .app { grid-template-columns: minmax(0, 600px); } }
+.board-wrap { position: relative; min-width: 0; }
+canvas { display: block; width: 100%; max-width: 100%; aspect-ratio: 94 / 104; border-radius: 6px; touch-action: manipulation; cursor: pointer;
+  box-shadow: 0 1px 0 rgba(0,0,0,.08), 0 18px 40px -18px rgba(40,24,8,.55); }
+canvas:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.panel { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.status { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
+.turn { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 600; }
+.dot { width: 14px; height: 14px; border-radius: 50%; flex: none; box-shadow: 0 0 0 2px var(--ink-ring); }
+.dot.red { background: var(--red); box-shadow: none; }
+.dot.black { background: var(--ink); }
+.note { color: var(--muted); font-size: 13px; min-height: 1.5em; }
+.check { color: var(--red); font-weight: 600; }
+.win { color: var(--accent); font-weight: 600; }
+.group { display: flex; flex-direction: column; gap: 6px; }
+.label { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.seg button { flex: 1; border: 0; background: transparent; color: var(--fg); font: inherit; padding: 8px 6px; cursor: pointer; border-right: 1px solid var(--line); }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--surface); font-weight: 600; }
+.seg button:disabled { opacity: .45; cursor: default; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { flex: 1; min-width: 90px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); font: inherit; font-weight: 500; padding: 9px 10px; border-radius: 8px; cursor: pointer; }
+.btn.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.btn:hover:not(:disabled) { border-color: var(--accent); }
+.btn:disabled { opacity: .45; cursor: default; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.moves { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; max-height: 260px; overflow-y: auto; padding: 6px 0; }
+.moves ol { list-style: none; margin: 0; padding: 0; }
+.moves li { display: grid; grid-template-columns: 34px 1fr 1fr; padding: 3px 14px; font-family: var(--font-piece); font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
+.moves li .n { font-family: var(--font-ui); font-weight: 400; color: var(--muted); font-size: 12px; align-self: center; }
+.moves .r { color: var(--red); }
+.moves .last { background: var(--accent-soft); border-radius: 4px; }
+.moves .empty { color: var(--muted); font-family: var(--font-ui); font-weight: 400; font-size: 13px; padding: 6px 14px; display: block; }
+.caps { display: flex; flex-direction: column; gap: 6px; }
+.caprow { display: flex; align-items: center; gap: 8px; min-height: 26px; flex-wrap: wrap; }
+.caprow .who { font-size: 12px; color: var(--muted); width: 56px; flex: none; }
+.chip { width: 24px; height: 24px; border-radius: 50%; display: inline-grid; place-items: center; font-family: var(--font-piece); font-weight: 900; font-size: 14px;
+  background: radial-gradient(circle at 40% 35%, #F8EBCB, #DDBE85); border: 1px solid #8A5E2E; }
+.chip.r { color: #B3261E; } .chip.b { color: #1D1D1D; }
+details { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px; }
+summary { cursor: pointer; font-weight: 600; }
+details ul { margin: 8px 0 4px; padding-left: 18px; color: var(--muted); font-size: 13px; }
+details li { margin: 3px 0; }
+details b { color: var(--fg); font-family: var(--font-piece); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>中国象棋</h1>
+    <span class="sub">Xiangqi · 楚河漢界</span>
+  </header>
+  <div class="app">
+    <div class="board-wrap" id="boardWrap">
+      <canvas id="board" tabindex="0" aria-label="象棋棋盘 Xiangqi board. Click a piece, then click where to move it."></canvas>
+    </div>
+    <aside class="panel">
+      <div class="status" aria-live="polite">
+        <div class="turn"><span class="dot red" id="turnDot"></span><span id="turnText">红方走棋</span></div>
+        <div class="note" id="noteText">点击棋子，再点击落点 · Click a piece, then a target</div>
+      </div>
+
+      <div class="group">
+        <span class="label">模式 Mode</span>
+        <div class="seg" id="modeSeg">
+          <button type="button" id="modeAi" data-mode="ai">人机 vs Computer</button>
+          <button type="button" id="modePvp" data-mode="pvp">双人 Two players</button>
+        </div>
+      </div>
+      <div class="group" id="sideGroup">
+        <span class="label">执子 Play as</span>
+        <div class="seg">
+          <button type="button" id="sideRed" data-red="1">执红 Red（先手）</button>
+          <button type="button" id="sideBlack" data-red="0">执黑 Black</button>
+        </div>
+      </div>
+      <div class="group" id="levelGroup">
+        <span class="label">难度 Level</span>
+        <div class="seg">
+          <button type="button" id="lv0" data-level="0">初级 Easy</button>
+          <button type="button" id="lv1" data-level="1">中级 Normal</button>
+          <button type="button" id="lv2" data-level="2">高级 Hard</button>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="btn primary" id="newBtn">新局 New game</button>
+        <button type="button" class="btn" id="undoBtn">悔棋 Undo</button>
+        <button type="button" class="btn" id="flipBtn">翻转 Flip</button>
+      </div>
+
+      <div class="group">
+        <span class="label">棋谱 Moves</span>
+        <div class="moves" id="moves"><ol id="moveList"></ol></div>
+      </div>
+
+      <div class="caps">
+        <span class="label">吃子 Captured</span>
+        <div class="caprow"><span class="who">红方失子</span><span id="capRed"></span></div>
+        <div class="caprow"><span class="who">黑方失子</span><span id="capBlack"></span></div>
+      </div>
+
+      <details>
+        <summary>走法 How pieces move</summary>
+        <ul>
+          <li><b>帅/将</b> King: one step orthogonally, stays inside the palace (九宫). The two kings may never face each other on an open file.</li>
+          <li><b>仕/士</b> Advisor: one step diagonally, inside the palace.</li>
+          <li><b>相/象</b> Elephant: two steps diagonally, cannot cross the river, blocked if the middle point is occupied (塞象眼).</li>
+          <li><b>马</b> Horse: one step straight then one diagonal; blocked by a piece next to it (蹩马腿).</li>
+          <li><b>车</b> Chariot: any distance in a straight line.</li>
+          <li><b>炮</b> Cannon: moves like a chariot, but captures by jumping over exactly one piece.</li>
+          <li><b>兵/卒</b> Soldier: one step forward; after crossing the river it may also step sideways.</li>
+          <li>Checkmate or leaving the opponent with no legal move (困毙) wins. 60 moves each without a capture is a draw.</li>
+        </ul>
+      </details>
+    </aside>
+  </div>
+</div>
+
+<script>
+function engineFactory() {
+  const isRed = p => p >= 'A' && p <= 'Z';
+  const D4 = [[1,0],[-1,0],[0,1],[0,-1]];
+  const DD = [[1,1],[1,-1],[-1,1],[-1,-1]];
+  const NM = [[2,1],[2,-1],[-2,1],[-2,-1],[1,2],[1,-2],[-1,2],[-1,-2]];
+  const VAL = { K: 0, A: 200, B: 200, N: 400, R: 900, C: 450, P: 100 };
+  const OV = { K: 3000, A: 200, B: 200, N: 400, R: 900, C: 450, P: 100 };
+  const inB = (r, c) => r >= 0 && r < 10 && c >= 0 && c < 9;
+
+  function gen(b, red, capsOnly) {
+    const ms = [];
+    const add = (from, r, c) => {
+      const t = b[r * 9 + c];
+      if (!t) { if (!capsOnly) ms.push(from * 128 + r * 9 + c); }
+      else if (isRed(t) !== red) ms.push(from * 128 + r * 9 + c);
+    };
+    for (let i = 0; i < 90; i++) {
+      const p = b[i];
+      if (!p || isRed(p) !== red) continue;
+      const r = (i / 9) | 0, c = i % 9;
+      switch (p.toUpperCase()) {
+        case 'K':
+          for (const [dr, dc] of D4) {
+            const nr = r + dr, nc = c + dc;
+            if (nc < 3 || nc > 5) continue;
+            if (red ? (nr < 7 || nr > 9) : (nr < 0 || nr > 2)) continue;
+            add(i, nr, nc);
+          }
+          break;
+        case 'A':
+          for (const [dr, dc] of DD) {
+            const nr = r + dr, nc = c + dc;
+            if (nc < 3 || nc > 5) continue;
+            if (red ? (nr < 7 || nr > 9) : (nr < 0 || nr > 2)) continue;
+            add(i, nr, nc);
+          }
+          break;
+        case 'B':
+          for (const [dr, dc] of DD) {
+            const nr = r + 2 * dr, nc = c + 2 * dc;
+            if (!inB(nr, nc)) continue;
+            if (red ? nr < 5 : nr > 4) continue;
+            if (b[(r + dr) * 9 + c + dc]) continue;
+            add(i, nr, nc);
+          }
+          break;
+        case 'N':
+          for (const [dr, dc] of NM) {
+            const nr = r + dr, nc = c + dc;
+            if (!inB(nr, nc)) continue;
+            const leg = Math.abs(dr) === 2 ? (r + dr / 2) * 9 + c : r * 9 + c + dc / 2;
+            if (b[leg]) continue;
+            add(i, nr, nc);
+          }
+          break;
+        case 'R':
+          for (const [dr, dc] of D4) {
+            let nr = r + dr, nc = c + dc;
+            while (inB(nr, nc)) {
+              const t = b[nr * 9 + nc];
+              if (!t) { if (!capsOnly) ms.push(i * 128 + nr * 9 + nc); }
+              else { if (isRed(t) !== red) ms.push(i * 128 + nr * 9 + nc); break; }
+              nr += dr; nc += dc;
+            }
+          }
+          break;
+        case 'C':
+          for (const [dr, dc] of D4) {
+            let nr = r + dr, nc = c + dc, screen = false;
+            while (inB(nr, nc)) {
+              const t = b[nr * 9 + nc];
+              if (!screen) {
+                if (!t) { if (!capsOnly) ms.push(i * 128 + nr * 9 + nc); }
+                else screen = true;
+              } else if (t) {
+                if (isRed(t) !== red) ms.push(i * 128 + nr * 9 + nc);
+                break;
+              }
+              nr += dr; nc += dc;
+            }
+          }
+          break;
+        case 'P': {
+          const f = red ? -1 : 1;
+          if (inB(r + f, c)) add(i, r + f, c);
+          if (red ? r <= 4 : r >= 5) {
+            if (c > 0) add(i, r, c - 1);
+            if (c < 8) add(i, r, c + 1);
+          }
+          break;
+        }
+      }
+    }
+    return ms;
+  }
+
+  function inCheck(b, red) {
+    const K = red ? 'K' : 'k';
+    let kr = -1, kc = -1;
+    const r0 = red ? 7 : 0;
+    for (let r = r0; r < r0 + 3 && kr < 0; r++)
+      for (let c = 3; c <= 5; c++) if (b[r * 9 + c] === K) { kr = r; kc = c; break; }
+    if (kr < 0) return true;
+    const eR = red ? 'r' : 'R', eC = red ? 'c' : 'C', eN = red ? 'n' : 'N', eP = red ? 'p' : 'P', eK = red ? 'k' : 'K';
+    for (const [dr, dc] of D4) {
+      let r = kr + dr, c = kc + dc, seen = 0;
+      while (inB(r, c)) {
+        const t = b[r * 9 + c];
+        if (t) {
+          if (seen === 0) { if (t === eR || t === eK) return true; seen = 1; }
+          else { if (t === eC) return true; break; }
+        }
+        r += dr; c += dc;
+      }
+    }
+    for (const [dr, dc] of NM) {
+      const nr = kr + dr, nc = kc + dc;
+      if (!inB(nr, nc) || b[nr * 9 + nc] !== eN) continue;
+      const leg = Math.abs(dr) === 2 ? (kr + dr / 2) * 9 + nc : (kr + dr) * 9 + kc + dc / 2;
+      if (!b[leg]) return true;
+    }
+    const pr = kr + (red ? -1 : 1);
+    if (inB(pr, kc) && b[pr * 9 + kc] === eP) return true;
+    if (kc > 0 && b[kr * 9 + kc - 1] === eP) return true;
+    if (kc < 8 && b[kr * 9 + kc + 1] === eP) return true;
+    return false;
+  }
+
+  function legal(b, red) {
+    const out = [];
+    for (const m of gen(b, red, false)) {
+      const f = m >> 7, t = m & 127, cap = b[t];
+      b[t] = b[f]; b[f] = '';
+      if (!inCheck(b, red)) out.push(m);
+      b[f] = b[t]; b[t] = cap;
+    }
+    return out;
+  }
+
+  function evaluate(b) {
+    let s = 0;
+    for (let i = 0; i < 90; i++) {
+      const p = b[i];
+      if (!p) continue;
+      const red = isRed(p), T = p.toUpperCase();
+      const r = (i / 9) | 0, c = i % 9;
+      const adv = red ? 9 - r : r; // 0 = own back rank
+      let v = VAL[T];
+      if (T === 'P') {
+        if (adv >= 5) {
+          v += 90 + (c >= 3 && c <= 5 ? 20 : 0);
+          if (adv >= 7 && adv <= 8) v += 15;
+          if (adv === 9) v -= 50;
+        } else if (adv === 4 && c === 4) v += 10;
+      } else if (T === 'N') {
+        v += (4 - Math.abs(c - 4)) * 6 + Math.min(adv, 6) * 5;
+        if (c === 0 || c === 8) v -= 15;
+      } else if (T === 'C') {
+        if (c === 4) v += 20;
+      } else if (T === 'R') {
+        if (adv >= 5) v += 20;
+        if (c === 3 || c === 5) v += 8;
+      }
+      s += red ? v : -v;
+    }
+    return s;
+  }
+
+  const INF = 1e9, MATE = 1e6;
+
+  function search(b0, red, opts) {
+    const b = b0.slice();
+    const t0 = Date.now();
+    let nodes = 0;
+    const STOP = { stop: true };
+    const order = ms => ms.map(m => {
+      const t = b[m & 127], f = b[m >> 7];
+      return [m, t ? OV[t.toUpperCase()] * 10 - OV[f.toUpperCase()] / 10 : 0];
+    }).sort((x, y) => y[1] - x[1]).map(x => x[0]);
+
+    function qs(alpha, beta, side, qd) {
+      const stand = side ? evaluate(b) : -evaluate(b);
+      if (stand >= beta) return stand;
+      if (stand > alpha) alpha = stand;
+      if (qd >= 5) return stand;
+      for (const m of order(gen(b, side, true))) {
+        const f = m >> 7, t = m & 127, cap = b[t];
+        b[t] = b[f]; b[f] = '';
+        if (inCheck(b, side)) { b[f] = b[t]; b[t] = cap; continue; }
+        const sc = -qs(-beta, -alpha, !side, qd + 1);
+        b[f] = b[t]; b[t] = cap;
+        if (sc >= beta) return sc;
+        if (sc > alpha) alpha = sc;
+      }
+      return alpha;
+    }
+
+    function nm(depth, alpha, beta, side, ply) {
+      if ((++nodes & 1023) === 0 && Date.now() - t0 > opts.time) throw STOP;
+      if (depth <= 0) return qs(alpha, beta, side, 0);
+      let best = -INF, any = false;
+      for (const m of order(gen(b, side, false))) {
+        const f = m >> 7, t = m & 127, cap = b[t];
+        b[t] = b[f]; b[f] = '';
+        if (inCheck(b, side)) { b[f] = b[t]; b[t] = cap; continue; }
+        any = true;
+        const sc = -nm(depth - 1, -beta, -alpha, !side, ply + 1);
+        b[f] = b[t]; b[t] = cap;
+        if (sc > best) best = sc;
+        if (sc > alpha) alpha = sc;
+        if (alpha >= beta) break;
+      }
+      if (!any) return -MATE + ply;
+      return best;
+    }
+
+    let root = order(legal(b, red));
+    if (!root.length) return null;
+    let best = root[0];
+    for (let d = 1; d <= opts.depth; d++) {
+      try {
+        let alpha = -INF;
+        const scored = [];
+        for (const m of root) {
+          const f = m >> 7, t = m & 127, cap = b[t];
+          b[t] = b[f]; b[f] = '';
+          let sc = -nm(d - 1, -INF, -alpha, !red, 1);
+          b[f] = b[t]; b[t] = cap;
+          if (opts.noise) sc += Math.random() * opts.noise;
+          scored.push([m, sc]);
+          if (sc > alpha) alpha = sc;
+        }
+        scored.sort((x, y) => y[1] - x[1]);
+        root = scored.map(x => x[0]);
+        best = root[0];
+        if (scored[0][1] > MATE / 2) break;
+        if (Date.now() - t0 > opts.time * 0.45) break;
+      } catch (e) {
+        if (e !== STOP) throw e;
+        break;
+      }
+    }
+    return best;
+  }
+
+  return { isRed, gen, legal, inCheck, search };
+}
+
+const E = engineFactory();
+const isRed = E.isRed;
+
+const START = [
+  'r','n','b','a','k','a','b','n','r',
+  '','','','','','','','','',
+  '','c','','','','','','c','',
+  'p','','p','','p','','p','','p',
+  '','','','','','','','','',
+  '','','','','','','','','',
+  'P','','P','','P','','P','','P',
+  '','C','','','','','','C','',
+  '','','','','','','','','',
+  'R','N','B','A','K','A','B','N','R'
+];
+const LEVELS = [
+  { depth: 2, time: 400, noise: 40 },
+  { depth: 4, time: 1200, noise: 6 },
+  { depth: 7, time: 3000, noise: 0 }
+];
+const CHAR_R = { K: '帅', A: '仕', B: '相', N: '马', R: '车', C: '炮', P: '兵' };
+const CHAR_B = { K: '将', A: '士', B: '象', N: '马', R: '车', C: '炮', P: '卒' };
+const CN = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+const FW = ['', '１', '２', '３', '４', '５', '６', '７', '８', '９'];
+const pieceChar = p => (isRed(p) ? CHAR_R : CHAR_B)[p.toUpperCase()];
+
+let board = START.slice();
+let redToMove = true;
+let history = [];
+let selected = -1, targets = [];
+let settings = { mode: 'ai', humanRed: true, level: 1 };
+let manualFlip = false;
+let gameOver = null;
+let thinking = false;
+let aiToken = 0;
+let anim = null;
+
+try { const s = JSON.parse(localStorage.getItem('xq-settings') || 'null'); if (s) settings = Object.assign(settings, s); } catch (e) {}
+const saveSettings = () => { try { localStorage.setItem('xq-settings', JSON.stringify(settings)); } catch (e) {} };
+
+function notate(b, from, to) {
+  const p = b[from], red = isRed(p), T = p.toUpperCase();
+  const fr = (from / 9) | 0, fc = from % 9, tr = (to / 9) | 0, tc = to % 9;
+  const num = n => red ? CN[n] : FW[n];
+  const file = c => red ? num(9 - c) : num(c + 1);
+  const name = pieceChar(p);
+  const same = [];
+  for (let r = 0; r < 10; r++) if (b[r * 9 + fc] === p) same.push(r);
+  let head;
+  if (same.length >= 2) {
+    const ord = red ? same : same.slice().reverse();
+    const idx = ord.indexOf(fr);
+    const labels = same.length === 2 ? ['前', '后'] : same.length === 3 ? ['前', '中', '后'] : ['一', '二', '三', '四', '五'];
+    head = labels[idx] + name;
+  } else head = name + file(fc);
+  const dy = red ? fr - tr : tr - fr;
+  let act;
+  if (dy === 0) act = '平' + file(tc);
+  else act = (dy > 0 ? '进' : '退') + ('KRCP'.includes(T) ? num(Math.abs(dy)) : file(tc));
+  return head + act;
+}
+
+/* ---------- AI worker ---------- */
+let worker = null;
+function makeWorker() {
+  try {
+    const src = 'const E=(' + engineFactory.toString() + ')();onmessage=function(e){var d=e.data;postMessage({token:d.token,move:E.search(d.board,d.red,d.opts)});};';
+    const w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+    w.onmessage = e => onAI(e.data);
+    w.onerror = () => { worker = null; };
+    return w;
+  } catch (e) { return null; }
+}
+worker = makeWorker();
+
+const isAiTurn = () => settings.mode === 'ai' && !gameOver && redToMove !== settings.humanRed;
+
+function cancelAI() {
+  aiToken++;
+  if (thinking && worker) { worker.terminate(); worker = makeWorker(); }
+  thinking = false;
+}
+
+function maybeAI() {
+  if (!isAiTurn()) return;
+  thinking = true;
+  const tok = ++aiToken;
+  updateUI();
+  setTimeout(() => {
+    if (tok !== aiToken) return;
+    if (history.length <= 1) {
+      // Classical openings: 炮二平五 / 马二进三 / 相三进五 / 兵七进一, replies 马８进７ / 炮８平５ / 马２进３
+      const book = history.length === 0 ? [70 * 128 + 67, 88 * 128 + 69, 87 * 128 + 67, 56 * 128 + 47] : [7 * 128 + 24, 25 * 128 + 22, 1 * 128 + 20];
+      const ok = E.legal(board.slice(), redToMove);
+      const choices = book.filter(m => ok.includes(m));
+      if (choices.length) { onAI({ token: tok, move: choices[Math.floor(Math.random() * choices.length)] }); return; }
+    }
+    const msg = { token: tok, board: board.slice(), red: redToMove, opts: LEVELS[settings.level] };
+    if (worker) worker.postMessage(msg);
+    else setTimeout(() => onAI({ token: tok, move: E.search(msg.board, msg.red, msg.opts) }), 30);
+  }, 260);
+}
+
+function onAI(d) {
+  if (d.token !== aiToken || !thinking) return;
+  thinking = false;
+  if (d.move == null) { updateUI(); return; }
+  doMove(d.move >> 7, d.move & 127, true);
+}
+
+/* ---------- game flow ---------- */
+function applyRaw(from, to) {
+  const n = notate(board, from, to);
+  const cap = board[to];
+  board[to] = board[from]; board[from] = '';
+  history.push({ from, to, cap, n });
+  redToMove = !redToMove;
+}
+
+function evaluateEnd() {
+  gameOver = null;
+  if (!E.legal(board, redToMove).length) {
+    gameOver = { winnerRed: !redToMove, reason: E.inCheck(board, redToMove) ? '绝杀 Checkmate' : '困毙 No legal moves' };
+    return;
+  }
+  let quiet = 0;
+  for (let i = history.length - 1; i >= 0 && !history[i].cap; i--) quiet++;
+  if (quiet >= 120) gameOver = { draw: true, reason: '六十回合无吃子 · 60 moves without a capture' };
+}
+
+function doMove(from, to, animate) {
+  const moving = board[from], cap = board[to];
+  applyRaw(from, to);
+  selected = -1; targets = [];
+  if (animate && !reduceMotion) anim = { from, to, piece: moving, cap, t0: performance.now() };
+  evaluateEnd();
+  updateUI();
+  draw();
+  maybeAI();
+}
+
+function newGame() {
+  cancelAI();
+  board = START.slice(); redToMove = true; history = []; selected = -1; targets = []; gameOver = null; anim = null;
+  updateUI(); draw(); maybeAI();
+}
+
+function undoOne() {
+  const h = history.pop();
+  if (!h) return;
+  board[h.from] = board[h.to]; board[h.to] = h.cap;
+  redToMove = !redToMove;
+}
+
+function undo() {
+  if (!history.length) return;
+  cancelAI();
+  undoOne();
+  if (settings.mode === 'ai') while (history.length && redToMove !== settings.humanRed) undoOne();
+  selected = -1; targets = []; gameOver = null; anim = null;
+  evaluateEnd();
+  updateUI(); draw(); maybeAI();
+}
+
+/* ---------- drawing ---------- */
+const canvas = document.getElementById('board');
+const ctx = canvas.getContext('2d');
+const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+let W = 0, H = 0, S = 0, M = 0, dpr = 1;
+
+const flipped = () => (settings.mode === 'ai' ? !settings.humanRed : false) !== manualFlip;
+function pos(i) {
+  let r = (i / 9) | 0, c = i % 9;
+  if (flipped()) { r = 9 - r; c = 8 - c; }
+  return [M + c * S, M + r * S];
+}
+
+function layout() {
+  const w = canvas.getBoundingClientRect().width;
+  if (!w) return;
+  dpr = window.devicePixelRatio || 1;
+  W = w; H = w * 104 / 94; S = w / 9.4; M = 0.7 * S;
+  canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+}
+
+const WOOD_LINE = '#5A391B';
+function drawBoard() {
+  const g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, '#E6C583'); g.addColorStop(0.5, '#DDB46C'); g.addColorStop(1, '#D0A35A');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  ctx.globalAlpha = 0.07; ctx.strokeStyle = '#6B3F12';
+  for (let i = 0; i < 46; i++) {
+    const y = (i / 46) * H + Math.sin(i * 12.9898) * 6;
+    ctx.lineWidth = 0.6 + (Math.abs(Math.sin(i * 3.7)) * 1.4);
+    ctx.beginPath(); ctx.moveTo(0, y);
+    ctx.bezierCurveTo(W * 0.3, y + Math.sin(i) * 8, W * 0.7, y - Math.cos(i * 1.3) * 8, W, y + Math.sin(i * 2.1) * 5);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  const x0 = M, y0 = M, x1 = M + 8 * S, y1 = M + 9 * S;
+  ctx.strokeStyle = WOOD_LINE;
+  ctx.lineWidth = 2.6;
+  const o = 0.16 * S;
+  ctx.strokeRect(x0 - o, y0 - o, x1 - x0 + 2 * o, y1 - y0 + 2 * o);
+  ctx.lineWidth = Math.max(1, S * 0.022);
+  ctx.beginPath();
+  for (let r = 0; r < 10; r++) { ctx.moveTo(x0, M + r * S); ctx.lineTo(x1, M + r * S); }
+  for (let c = 0; c < 9; c++) {
+    const x = M + c * S;
+    if (c === 0 || c === 8) { ctx.moveTo(x, y0); ctx.lineTo(x, y1); }
+    else { ctx.moveTo(x, y0); ctx.lineTo(x, M + 4 * S); ctx.moveTo(x, M + 5 * S); ctx.lineTo(x, y1); }
+  }
+  for (const r of [0, 7]) {
+    ctx.moveTo(M + 3 * S, M + r * S); ctx.lineTo(M + 5 * S, M + (r + 2) * S);
+    ctx.moveTo(M + 5 * S, M + r * S); ctx.lineTo(M + 3 * S, M + (r + 2) * S);
+  }
+  ctx.stroke();
+
+  const marks = [[2,1],[2,7],[7,1],[7,7],[3,0],[3,2],[3,4],[3,6],[3,8],[6,0],[6,2],[6,4],[6,6],[6,8]];
+  const gp = 0.07 * S, ln = 0.17 * S;
+  ctx.beginPath();
+  for (const [r, c] of marks) {
+    const x = M + c * S, y = M + r * S;
+    for (const sx of [-1, 1]) {
+      if ((c === 0 && sx < 0) || (c === 8 && sx > 0)) continue;
+      for (const sy of [-1, 1]) {
+        ctx.moveTo(x + sx * (gp + ln), y + sy * gp);
+        ctx.lineTo(x + sx * gp, y + sy * gp);
+        ctx.lineTo(x + sx * gp, y + sy * (gp + ln));
+      }
+    }
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(90,57,27,.78)';
+  ctx.font = `${0.62 * S}px "Ma Shan Zheng", "STXingkai", "KaiTi", serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const ry = M + 4.5 * S;
+  ctx.fillText('楚', M + 1.5 * S, ry); ctx.fillText('河', M + 2.5 * S, ry);
+  ctx.fillText('漢', M + 5.5 * S, ry); ctx.fillText('界', M + 6.5 * S, ry);
+
+  ctx.font = `600 ${0.22 * S}px "Noto Serif SC", serif`;
+  ctx.fillStyle = 'rgba(90,57,27,.85)';
+  const f = flipped();
+  for (let vc = 0; vc < 9; vc++) {
+    const c = f ? 8 - vc : vc;
+    const topRed = f;
+    const top = topRed ? CN[9 - c] : FW[c + 1];
+    const bot = topRed ? FW[c + 1] : CN[9 - c];
+    ctx.fillText(top, M + vc * S, M - 0.44 * S);
+    ctx.fillText(bot, M + vc * S, M + 9 * S + 0.44 * S);
+  }
+}
+
+function drawPiece(p, x, y, opt) {
+  const R = 0.445 * S;
+  const lift = opt && opt.lift ? 0.06 * S : 0;
+  ctx.save();
+  if (opt && opt.alpha != null) ctx.globalAlpha = opt.alpha;
+  ctx.fillStyle = 'rgba(30,16,4,.35)';
+  ctx.beginPath(); ctx.arc(x + 0.03 * S, y + 0.06 * S + lift * 0.5, R, 0, Math.PI * 2); ctx.fill();
+  y -= lift;
+  const g = ctx.createRadialGradient(x - R * 0.3, y - R * 0.35, R * 0.1, x, y, R);
+  g.addColorStop(0, '#FBF0D4'); g.addColorStop(0.75, '#EDD3A0'); g.addColorStop(1, '#C99E5E');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.fill();
+  ctx.lineWidth = Math.max(1, S * 0.025); ctx.strokeStyle = '#7A4F22'; ctx.stroke();
+  const col = isRed(p) ? '#B3261E' : '#1D1D1D';
+  ctx.lineWidth = Math.max(1, S * 0.018); ctx.strokeStyle = col;
+  ctx.beginPath(); ctx.arc(x, y, R * 0.8, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = col;
+  ctx.font = `900 ${0.54 * S}px "Noto Serif SC", "STKaiti", "KaiTi", serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(pieceChar(p), x, y + 0.03 * S);
+  if (opt && opt.ring) {
+    ctx.lineWidth = Math.max(2, S * 0.06); ctx.strokeStyle = opt.ring;
+    ctx.beginPath(); ctx.arc(x, y, R + S * 0.05, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function brackets(x, y, color) {
+  const d = 0.48 * S, l = 0.16 * S;
+  ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = Math.max(2, S * 0.045); ctx.lineCap = 'round';
+  ctx.beginPath();
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+    ctx.moveTo(x + sx * d, y + sy * (d - l)); ctx.lineTo(x + sx * d, y + sy * d); ctx.lineTo(x + sx * (d - l), y + sy * d);
+  }
+  ctx.stroke(); ctx.restore();
+}
+
+const SEL = '#1F6E57', HINT = '#1F6E57', DANGER = '#C62828', LASTC = '#2A7FB8';
+
+function draw() {
+  if (!W) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawBoard();
+  const last = history[history.length - 1];
+  let t = 1;
+  if (anim) {
+    t = Math.min(1, (performance.now() - anim.t0) / 200);
+    if (t >= 1) anim = null;
+  }
+  if (last) {
+    const [fx, fy] = pos(last.from);
+    ctx.save(); ctx.strokeStyle = LASTC; ctx.setLineDash([S * 0.08, S * 0.07]); ctx.lineWidth = Math.max(1.5, S * 0.03);
+    ctx.beginPath(); ctx.arc(fx, fy, 0.3 * S, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+  }
+  let checkedKing = -1;
+  if (E.inCheck(board, redToMove)) checkedKing = board.indexOf(redToMove ? 'K' : 'k');
+  for (let i = 0; i < 90; i++) {
+    const p = board[i];
+    if (!p) continue;
+    if (anim && i === anim.to) continue;
+    const [x, y] = pos(i);
+    const opt = {};
+    if (i === selected) { opt.lift = true; opt.ring = SEL; }
+    else if (i === checkedKing) opt.ring = DANGER;
+    else if (targets.includes(i)) opt.ring = 'rgba(198,40,40,.85)';
+    drawPiece(p, x, y, opt);
+  }
+  if (anim) {
+    const [fx, fy] = pos(anim.from), [tx, ty] = pos(anim.to);
+    const e = 1 - Math.pow(1 - t, 3);
+    if (anim.cap) drawPiece(anim.cap, tx, ty, { alpha: 1 - e });
+    drawPiece(anim.piece, fx + (tx - fx) * e, fy + (ty - fy) * e, { lift: true });
+    requestAnimationFrame(draw);
+  } else if (last) {
+    const [x, y] = pos(last.to);
+    brackets(x, y, LASTC);
+    if (last.to === checkedKing) {}
+  }
+  for (const i of targets) {
+    if (board[i]) continue;
+    const [x, y] = pos(i);
+    ctx.fillStyle = HINT; ctx.globalAlpha = 0.85;
+    ctx.beginPath(); ctx.arc(x, y, 0.12 * S, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+/* ---------- input ---------- */
+function handleClick(i) {
+  if (gameOver || thinking) return;
+  if (settings.mode === 'ai' && redToMove !== settings.humanRed) return;
+  const p = board[i];
+  if (selected >= 0 && targets.includes(i)) { doMove(selected, i, true); return; }
+  if (p && isRed(p) === redToMove && i !== selected) {
+    selected = i;
+    targets = E.legal(board, redToMove).filter(m => (m >> 7) === i).map(m => m & 127);
+    if (!targets.length) setNote('这个棋子现在不能走 · This piece has no legal move');
+    else setNote(defaultNote());
+  } else { selected = -1; targets = []; }
+  draw();
+}
+
+canvas.addEventListener('pointerdown', e => {
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left, y = e.clientY - rect.top;
+  let vc = Math.round((x - M) / S), vr = Math.round((y - M) / S);
+  if (vc < 0 || vc > 8 || vr < 0 || vr > 9) return;
+  if (Math.hypot(x - (M + vc * S), y - (M + vr * S)) > 0.5 * S) return;
+  if (flipped()) { vc = 8 - vc; vr = 9 - vr; }
+  handleClick(vr * 9 + vc);
+});
+
+/* ---------- UI ---------- */
+const $ = id => document.getElementById(id);
+function setNote(html) { $('noteText').innerHTML = html; }
+function defaultNote() {
+  if (settings.mode === 'ai') return '你执' + (settings.humanRed ? '红' : '黑') + ' · You play ' + (settings.humanRed ? 'Red' : 'Black');
+  return '双人对战 · Pass and play on one screen';
+}
+
+function updateUI() {
+  const dot = $('turnDot'), txt = $('turnText');
+  if (gameOver) {
+    if (gameOver.draw) { dot.className = 'dot'; txt.textContent = '和棋 Draw'; }
+    else {
+      dot.className = 'dot ' + (gameOver.winnerRed ? 'red' : 'black');
+      let who = gameOver.winnerRed ? '红方胜 Red wins' : '黑方胜 Black wins';
+      if (settings.mode === 'ai') who = gameOver.winnerRed === settings.humanRed ? '你赢了！You win' : '电脑胜 Computer wins';
+      txt.textContent = who;
+    }
+    setNote('<span class="win">' + gameOver.reason + '</span>');
+  } else {
+    dot.className = 'dot ' + (redToMove ? 'red' : 'black');
+    let t = redToMove ? '红方走棋 Red to move' : '黑方走棋 Black to move';
+    if (settings.mode === 'ai') t = thinking ? '电脑思考中… Thinking' : (redToMove === settings.humanRed ? '轮到你 Your move' : t);
+    txt.textContent = t;
+    if (E.inCheck(board, redToMove)) setNote('<span class="check">将军！Check</span>');
+    else setNote(defaultNote());
+  }
+
+  for (const b of document.querySelectorAll('#modeSeg button')) b.setAttribute('aria-pressed', String(b.dataset.mode === settings.mode));
+  $('sideRed').setAttribute('aria-pressed', String(settings.humanRed));
+  $('sideBlack').setAttribute('aria-pressed', String(!settings.humanRed));
+  for (let l = 0; l < 3; l++) $('lv' + l).setAttribute('aria-pressed', String(settings.level === l));
+  $('sideGroup').hidden = settings.mode !== 'ai';
+  $('levelGroup').hidden = settings.mode !== 'ai';
+  $('undoBtn').disabled = !history.length;
+
+  const ol = $('moveList');
+  ol.innerHTML = '';
+  if (!history.length) {
+    ol.innerHTML = '<li class="empty" style="display:block">还没有走棋 · No moves yet</li>';
+  } else {
+    for (let i = 0; i < history.length; i += 2) {
+      const li = document.createElement('li');
+      const a = history[i], b = history[i + 1];
+      const lastIdx = history.length - 1;
+      li.innerHTML = `<span class="n">${i / 2 + 1}.</span><span class="r${lastIdx === i ? ' last' : ''}">${a.n}</span><span class="${lastIdx === i + 1 ? 'last' : ''}">${b ? b.n : ''}</span>`;
+      ol.appendChild(li);
+    }
+    const box = $('moves'); box.scrollTop = box.scrollHeight;
+  }
+
+  const capR = [], capB = [];
+  for (const h of history) if (h.cap) (isRed(h.cap) ? capR : capB).push(h.cap);
+  $('capRed').innerHTML = capR.map(p => `<span class="chip r">${pieceChar(p)}</span>`).join(' ');
+  $('capBlack').innerHTML = capB.map(p => `<span class="chip b">${pieceChar(p)}</span>`).join(' ');
+}
+
+for (const b of document.querySelectorAll('#modeSeg button')) b.addEventListener('click', () => {
+  if (settings.mode === b.dataset.mode) return;
+  settings.mode = b.dataset.mode; manualFlip = false; saveSettings(); newGame();
+});
+for (const id of ['sideRed', 'sideBlack']) $(id).addEventListener('click', e => {
+  const red = e.currentTarget.dataset.red === '1';
+  if (settings.humanRed === red) return;
+  settings.humanRed = red; manualFlip = false; saveSettings(); newGame();
+});
+for (let l = 0; l < 3; l++) $('lv' + l).addEventListener('click', () => { settings.level = l; saveSettings(); updateUI(); });
+$('newBtn').addEventListener('click', newGame);
+$('undoBtn').addEventListener('click', undo);
+$('flipBtn').addEventListener('click', () => { manualFlip = !manualFlip; draw(); });
+
+new ResizeObserver(() => { layout(); draw(); }).observe($('boardWrap'));
+
+if (document.fonts && document.fonts.load) {
+  Promise.all([
+    document.fonts.load('900 40px "Noto Serif SC"', '帅仕相马车炮兵将士象卒'),
+    document.fonts.load('40px "Ma Shan Zheng"', '楚河漢界中国象棋')
+  ]).then(() => draw()).catch(() => {});
+}
+
+/* ---------- keep the game across live updates ---------- */
+window.claude?.hot?.snapshot?.(() => ({ moves: history.map(h => [h.from, h.to]), settings, manualFlip }));
+function start(data) {
+  if (data && data.settings) settings = Object.assign(settings, data.settings);
+  if (data && typeof data.manualFlip === 'boolean') manualFlip = data.manualFlip;
+  board = START.slice(); redToMove = true; history = [];
+  if (data && Array.isArray(data.moves)) for (const [f, t] of data.moves) applyRaw(f, t);
+  evaluateEnd();
+  layout(); updateUI(); draw(); maybeAI();
+}
+window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+</script>
+
+</body>
+</html>
